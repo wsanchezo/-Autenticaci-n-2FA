@@ -1,0 +1,279 @@
+import tkinter as tk
+import pyotp
+import qrcode
+import random
+import string
+import time
+
+# Simulated database
+users_db = {}
+backup_codes_db = {}
+failed_attempts = {}
+
+# Rate limiting parameters
+TIME_WINDOW = 300  # 5 minutes in seconds
+MAX_ATTEMPTS = 3
+BLOCK_DURATION = 600  # 10 minutes in seconds
+
+def generate_secret_key():
+    """
+    Generate a unique secret key for a user.
+
+    Returns:
+        str: Secret key.
+    """
+    return pyotp.random_base32()
+
+def generate_backup_codes():
+    """
+    Generate a set of backup codes.
+
+    Returns:
+        list: List of backup codes.
+    """
+    return [''.join(random.choices(string.ascii_uppercase + string.digits, k=8)) for _ in range(5)]
+
+def generate_qr_code(secret_key, user_email):
+    """
+    Generate a QR code based on the secret key.
+
+    Args:
+        secret_key (str): Secret key.
+        user_email (str): User's email address.
+    """
+    totp = pyotp.TOTP(secret_key)
+    provision_uri = totp.provisioning_uri(name=user_email, issuer_name="YourAppName")
+    img = qrcode.make(provision_uri)
+    img.show()
+
+def register_user(email, password):
+    """
+    Register a new user.
+
+    Args:
+        email (str): User's email address.
+        password (str): User's password.
+    """
+    if email in users_db:
+        print("User already exists!")
+        return
+    secret_key = generate_secret_key()
+    users_db[email] = (secret_key, password)
+    backup_codes = generate_backup_codes()
+    backup_codes_db[email] = backup_codes
+    print(f"User {email} registered with secret key: {secret_key}")
+    print("Backup Codes:")
+    for code in backup_codes:
+        print(code)
+    print("Generating QR Code for 2FA setup...")
+    generate_qr_code(secret_key, email)
+
+def verify_password(email, password):
+    """
+    Verify the provided password.
+
+    Args:
+        email (str): User's email address.
+        password (str): Password to verify.
+
+    Returns:
+        bool: True if the password is correct, False otherwise.
+    """
+    if email not in users_db:
+        return False
+    return users_db[email][1] == password
+
+def verify_totp(email, provided_totp):
+    """
+    Verify the provided TOTP against the current TOTP for the secret key.
+
+    Args:
+        email (str): User's email address.
+        provided_totp (str): TOTP provided by the user.
+
+    Returns:
+        bool: True if the TOTP is valid, False otherwise.
+    """
+    if email not in users_db:
+        return False
+    secret_key, _ = users_db[email]
+    totp = pyotp.TOTP(secret_key)
+    return totp.verify(provided_totp)
+
+def verify_backup_code(email, provided_code):
+    """
+    Verify the provided backup code.
+
+    Args:
+        email (str): User's email address.
+        provided_code (str): Backup code provided by the user.
+
+    Returns:
+        bool: True if the backup code is valid, False otherwise.
+    """
+    if email not in backup_codes_db:
+        return False
+    if provided_code in backup_codes_db[email]:
+        backup_codes_db[email].remove(provided_code)
+        return True
+    return False
+
+def is_user_blocked(email):
+    """
+    Check if a user is blocked due to exceeding login attempts.
+
+    Args:
+        email (str): User's email address.
+
+    Returns:
+        bool: True if the user is blocked, False otherwise.
+    """
+    if email not in failed_attempts:
+        return False
+    last_attempt_time, attempts = failed_attempts[email]
+    if time.time() - last_attempt_time < BLOCK_DURATION and attempts >= MAX_ATTEMPTS:
+        return True
+    return False
+
+def record_failed_attempt(email):
+    """
+    Record a failed login attempt for a user.
+
+    Args:
+        email (str): User's email address.
+    """
+    if email not in failed_attempts:
+        failed_attempts[email] = (time.time(), 1)
+    else:
+        last_attempt_time, attempts = failed_attempts[email]
+        if time.time() - last_attempt_time > TIME_WINDOW:
+            failed_attempts[email] = (time.time(), 1)
+        else:
+            failed_attempts[email] = (last_attempt_time, attempts + 1)
+
+def login(email, password, provided_totp_or_code):
+    """
+    Simulate a login process.
+
+    Args:
+        email (str): User's email address.
+        password (str): User's password.
+        provided_totp_or_code (str): TOTP or backup code provided by the user.
+    """
+    if is_user_blocked(email):
+        print("Too many failed attempts. Please wait and try again later.")
+        return
+
+    if verify_password(email, password) and (verify_totp(email, provided_totp_or_code) or verify_backup_code(email, provided_totp_or_code)):
+        print("Login successful!")
+        # Reset failed attempts after a successful login
+        if email in failed_attempts:
+            del failed_attempts[email]
+    else:
+        print("Invalid credentials or TOTP/backup code. Please try again.")
+        record_failed_attempt(email)
+
+def register_window():
+    """
+    Create a window for user registration.
+    """
+    register_window = tk.Toplevel()
+    register_window.title("Register")
+    register_window.geometry("400x250")
+    
+    # Create a frame to hold the content
+    frame = tk.Frame(register_window)
+    frame.place(relx=0.5, rely=0.5, anchor="center")
+
+    label_email = tk.Label(frame, text="Email:")
+    label_email.grid(row=0, column=0, padx=10, pady=10)
+    entry_email = tk.Entry(frame)
+    entry_email.grid(row=0, column=1, padx=10, pady=10)
+
+    label_password = tk.Label(frame, text="Password:")
+    label_password.grid(row=1, column=0, padx=10, pady=10)
+    entry_password = tk.Entry(frame, show="*")
+    entry_password.grid(row=1, column=1, padx=10, pady=10)
+
+    button_register = tk.Button(frame, text="Register", command=lambda: register_user(entry_email.get(), entry_password.get()), width=20)
+    button_register.grid(row=2, column=0, columnspan=2, padx=10, pady=10)
+
+def login_window():
+    """
+    Create a window for user login.
+    """
+    login_window = tk.Toplevel()
+    login_window.title("Login")
+    login_window.geometry("400x250")
+    
+    # Create a frame to hold the content
+    frame = tk.Frame(login_window)
+    frame.place(relx=0.5, rely=0.5, anchor="center")
+
+    label_email = tk.Label(frame, text="Email:")
+    label_email.grid(row=0, column=0, padx=10, pady=10)
+    entry_email = tk.Entry(frame)
+    entry_email.grid(row=0, column=1, padx=10, pady=10)
+
+    label_password = tk.Label(frame, text="Password:")
+    label_password.grid(row=1, column=0, padx=10, pady=10)
+    entry_password = tk.Entry(frame, show="*")
+    entry_password.grid(row=1, column=1, padx=10, pady=10)
+
+    label_totp = tk.Label(frame, text="TOTP/Backup Code:")
+    label_totp.grid(row=2, column=0, padx=10, pady=10)
+    entry_totp = tk.Entry(frame)
+    entry_totp.grid(row=2, column=1, padx=10, pady=10)
+
+    button_login = tk.Button(frame, text="Login", command=lambda: login(entry_email.get(), entry_password.get(), entry_totp.get()), width=20)
+    button_login.grid(row=3, column=0, columnspan=2, padx=10, pady=10)
+
+def exit_window():
+    """
+    Create a window for exit.
+    """
+    exit_window = tk.Toplevel()
+    exit_window.title("Exit")
+    exit_window.geometry("200x100")
+    
+    # Create a frame to hold the content
+    frame = tk.Frame(exit_window)
+    frame.place(relx=0.5, rely=0.5, anchor="center")
+
+    label_exit = tk.Label(frame, text="Are you sure you want to exit?")
+    label_exit.grid(row=0, column=0, padx=10, pady=10)
+
+    button_yes = tk.Button(frame, text="Yes", command=exit, width=10)
+    button_yes.grid(row=1, column=0, padx=5, pady=5)
+
+    button_no = tk.Button(frame, text="No", command=exit_window.destroy, width=10)
+    button_no.grid(row=1, column=1, padx=5, pady=5)
+
+def main_window():
+    """
+    Create the main window.
+    """
+    root = tk.Tk()
+    root.title("MarketPlace Authentication")
+    root.geometry("500x500")
+
+    # Create a frame to hold the content
+    frame = tk.Frame(root)
+    frame.place(relx=0.5, rely=0.5, anchor="center")
+
+    label_title = tk.Label(frame, text="MarketPlace Authentication", font=("Helvetica", 16))
+    label_title.grid(row=0, column=0, columnspan=2, padx=10, pady=10)
+
+    button_register = tk.Button(frame, text="Register", command=register_window, width=20)
+    button_register.grid(row=1, column=0, padx=10, pady=10)
+
+    button_login = tk.Button(frame, text="Login", command=login_window, width=20)
+    button_login.grid(row=1, column=1, padx=10, pady=10)
+
+    button_exit = tk.Button(frame, text="Exit", command=exit_window, width=20)
+    button_exit.grid(row=2, column=0, columnspan=2, padx=10, pady=10)
+
+    root.mainloop()
+
+if __name__ == "__main__":
+    main_window()
