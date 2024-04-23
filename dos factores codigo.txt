@@ -254,14 +254,14 @@ def main_window():
     Create the main window.
     """
     root = tk.Tk()
-    root.title("MarketPlace Authentication")
+    root.title("Mercado libre Authentication")
     root.geometry("500x500")
 
     # Create a frame to hold the content
     frame = tk.Frame(root)
     frame.place(relx=0.5, rely=0.5, anchor="center")
 
-    label_title = tk.Label(frame, text="MarketPlace Authentication", font=("Helvetica", 16))
+    label_title = tk.Label(frame, text="Mercado libre Authentication", font=("Helvetica", 16))
     label_title.grid(row=0, column=0, columnspan=2, padx=10, pady=10)
 
     button_register = tk.Button(frame, text="Register", command=register_window, width=20)
