@@ -1,0 +1,3 @@
+El código proporcionado demuestra cómo se implementa la autenticación de dos factores (2FA) utilizando un servicio que permite registrar usuarios, generar claves secretas, códigos de respaldo y códigos QR para configurar la autenticación en una aplicación de autenticación. También se implementa la verificación de la contraseña del usuario junto con el código TOTP o los códigos de respaldo durante el proceso de inicio de sesión.
+Interfaz gráfica:
+Se ha creado una interfaz gráfica simple utilizando Tkinter que permite a los usuarios registrar una cuenta, iniciar sesión y salir del sistema. La interfaz proporciona una experiencia de usuario amigable y facilita la interacción con las funciones de autenticación.
